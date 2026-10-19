@@ -305,6 +305,13 @@ async def api_kirocrew_config_patch(request: web.Request) -> web.Response:
                 return _deny("unsupported config type", f"{path_key}={value}", 500)
             validated[sub_key] = sub_val
         value = validated
+    elif spec["type"] == "normalized":
+        # A structured value: the shared normalizer raises ``ValueError`` naming
+        # the field, or returns the value to store.
+        try:
+            value = spec["normalize"](value)
+        except ValueError as exc:
+            return _deny(str(exc), path_key)
     else:
         return _deny("unsupported config type", f"{path_key}={value}", 500)
 
@@ -490,7 +497,8 @@ async def api_kirocrew_config_patch(request: web.Request) -> web.Response:
             _log_sel("error", f"{path_key}=write_failed")
             return web.json_response({"error": "failed to write config file"}, status=500)
 
-    _log_sel("success", f"{path_key}={value}")
+    # A structured value is audited by path only; a whole record would bloat each line.
+    _log_sel("success", path_key if spec["type"] == "normalized" else f"{path_key}={value}")
 
     # Everything a running gateway does in response to this write lives behind
     # ``config.live.subscribe`` (the provider switch and role-model rebuild are
