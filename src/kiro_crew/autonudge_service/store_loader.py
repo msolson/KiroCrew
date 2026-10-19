@@ -427,6 +427,8 @@ def _load(self: AutoNudgeService) -> None:
     self._store.delivering_claim = {}
     # Re-derived below from each row's own marker, never carried across a load.
     self._store.undelivered_claim = set()
+    # A start owed by a prior load is not owed by this one: re-derived below.
+    self._store.pending_starts = {}
     # The sidecar is the SINGLE durable location. Held-aside rows are deliberately
     # not embedded in the store too -- two copies of one state can disagree.
     prior_quarantined = self._store.read_quarantine_sidecar()
@@ -492,6 +494,8 @@ def _load(self: AutoNudgeService) -> None:
             redact_store_value(raw.get("id") if isinstance(raw, dict) else None),
             self._path,
         )
+    #: Ids of rows the torn-deactivation repair below resumed (see ``pending_starts``).
+    torn_resumed: list[str] = []
     for raw in store_rows:
         try:
             loop_values = {
@@ -1002,6 +1006,10 @@ def _load(self: AutoNudgeService) -> None:
                 )
                 loop.active = True
                 self._store_dirty = True
+                # Counted as a start when a commit writes it active, not here:
+                # the stop baseline below is taken from the rows on disk, where
+                # this row is inactive, so its later stop needs this start.
+                torn_resumed.append(loop.id)
         except Exception:
             logger.warning("AutoNudge: skipping malformed loop entry: %r", raw, exc_info=True)
             # Without this, a sibling flagging the store dirty makes the rewrite delete
@@ -1046,5 +1054,12 @@ def _load(self: AutoNudgeService) -> None:
             loop_id: summary
             for loop_id, summary in autonudge_stop_log.active_summaries(store_rows).items()
             if loop_id in self._loops
+        }
+        # Only a resume this load kept: the sentinel-drop repair can deactivate the
+        # same row again, and a row it served is the only one a commit can write.
+        self._store.pending_starts = {
+            loop_id: self._loops[loop_id]
+            for loop_id in torn_resumed
+            if loop_id in self._loops and self._loops[loop_id].active
         }
     logger.info("AutoNudge: loaded %d loops", len(self._loops))

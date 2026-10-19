@@ -113,6 +113,12 @@ class LoopStore:
         # and is touched with single dict operations, so the event loop never waits.
         self.committed_active: dict[str, dict[str, Any]] = {}
         self.stop_notes: dict[str, tuple[str, str]] = {}
+        # Loops ``_load`` resumed from the torn-deactivation shape, keyed by id. The
+        # row was inactive on disk, so the baseline above does not hold it; the next
+        # commit that writes it active is its inactive-to-active transition and counts
+        # it as a start, so its later stop is paired. Set by ``_load`` and drained
+        # under ``commit_lock``.
+        self.pending_starts: dict[str, Any] = {}
         self.commit_lock = threading.Lock()
         # Rows withheld from the live map but preserved on disk for repair. Kept off
         # every egress path because ADDRESSING_FIELDS are exempt from the scrub.
@@ -266,6 +272,7 @@ class LoopStore:
         rows = payload.get("loops") or []
         try:
             records = autonudge_stop_log.stop_records(self.committed_active, rows, self.stop_notes)
+            outcomes = monitor_loop_metrics.monitor_outcomes(rows) if records else {}
             for record in records:
                 autonudge_stop_log.log_record(record)
                 autonudge_stop_log.append_record(self.path.parent, record)
@@ -277,8 +284,12 @@ class LoopStore:
                 # paths that can stop a loop cannot double-count between them.
                 # In-memory add, so it costs the commit nothing; the record's
                 # free-text reason is mapped to a closed value by the metrics
-                # module and never travels as itself.
-                monitor_loop_metrics.record_loop_stopped(record)
+                # module and never travels as itself. A monitor row's terminal
+                # outcome is passed alongside, for a provider reason code the
+                # closed set does not name.
+                monitor_loop_metrics.record_loop_stopped(
+                    record, outcomes.get(str(record.get("loop_id") or ""))
+                )
         except Exception:  # noqa: BLE001 - the store write already committed
             logger.warning("AutoNudge: could not record a loop stop", exc_info=True)
         finally:
@@ -288,6 +299,24 @@ class LoopStore:
                 self.committed_active = autonudge_stop_log.active_summaries(rows)
             except Exception:  # noqa: BLE001 - see above
                 self.committed_active = {}
+            self._record_pending_starts_committed()
+
+    def _record_pending_starts_committed(self) -> None:
+        """Count each boot resume this commit made durable, once.
+
+        Drained on every commit. A resumed row this commit writes active is now in
+        the baseline, so its later stop will be counted, and it counts its start
+        here. A row the commit does not write active (stopped or removed before any
+        write landed) is in neither baseline, so neither side counts it.
+        """
+        pending, self.pending_starts = self.pending_starts, {}
+        for loop_id, loop in pending.items():
+            if loop_id not in self.committed_active:
+                continue
+            try:
+                monitor_loop_metrics.record_loop_started(loop)
+            except Exception:  # noqa: BLE001 - the store write already committed
+                logger.warning("AutoNudge: could not record a loop start", exc_info=True)
 
     def read_quarantine_sidecar(self) -> list:
         """Read held-aside rows from the sidecar, tolerating absence but not corruption.
