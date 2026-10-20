@@ -1616,8 +1616,8 @@ async def _stream_task(
                 # authority. ``tool_input_redacted`` is transport provenance:
                 # re-running the scanners cannot reveal bytes an ACP transport
                 # already removed. Either signal makes the command display-only.
-                _safe_cmd, _cmd_credential_redacted = redact_credentials(_cmd)
-                _safe_cmd, _cmd_url_redacted = redact_exfiltration_urls(_safe_cmd)
+                _safe_cmd, _cmd_url_redacted = redact_exfiltration_urls(_cmd)
+                _safe_cmd, _cmd_credential_redacted = redact_credentials(_safe_cmd)
                 _command_grantable = bool(_cmd) and not (
                     bool(getattr(event, "tool_input_redacted", False))
                     or _cmd_credential_redacted

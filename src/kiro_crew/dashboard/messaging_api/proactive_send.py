@@ -285,8 +285,8 @@ async def api_delete_message(request: web.Request) -> web.Response:
         await slack.delete_message(channel, ts)
     except Exception as e:
         safe_error = str(e).split("\n")[0][:200]
-        safe_error, _ = redact_credentials(safe_error)
         safe_error, _ = redact_exfiltration_urls(safe_error)
+        safe_error, _ = redact_credentials(safe_error)
         return web.json_response({"error": f"Delete failed: {safe_error}"}, status=502)
     return web.json_response({"ok": True})
 
@@ -434,8 +434,8 @@ async def api_update_message(request: web.Request) -> web.Response:
         await slack.update_message(channel, ts, text, blocks)
     except Exception as e:
         safe_error = str(e).split("\n")[0][:200]
-        safe_error, _ = redact_credentials(safe_error)
         safe_error, _ = redact_exfiltration_urls(safe_error)
+        safe_error, _ = redact_credentials(safe_error)
         return web.json_response(
             {"error": f"Update failed: {safe_error}", "code": "update_failed"}, status=502
         )
@@ -1218,8 +1218,8 @@ def _send_message_response(
     from kiro_crew.security import redact_credentials, redact_exfiltration_urls  # noqa: F811
 
     if outcome.channel_code:
-        safe_detail, _ = redact_credentials(outcome.channel_detail)
-        safe_detail, _ = redact_exfiltration_urls(safe_detail)
+        safe_detail, _ = redact_exfiltration_urls(outcome.channel_detail)
+        safe_detail, _ = redact_credentials(safe_detail)
         detail = f"{channel_target} delivery failed: {safe_detail}"
         # Both responses are spelled out inline, with a literal status and a
         # literal body, rather than sharing a hoisted dict or computing the
@@ -1242,8 +1242,8 @@ def _send_message_response(
             {"ok": False, "error": unconfirmed, "code": outcome.channel_code}, status=502
         )
     if outcome.slack_attempted and not outcome.sent_slack:
-        safe_error, _ = redact_credentials(outcome.slack_error)
-        safe_error, _ = redact_exfiltration_urls(safe_error)
+        safe_error, _ = redact_exfiltration_urls(outcome.slack_error)
+        safe_error, _ = redact_credentials(safe_error)
         # An unknown outcome says so, so the caller checks the conversation
         # instead of sending a message that may already be there.
         if outcome.slack_failure == "unconfirmed":

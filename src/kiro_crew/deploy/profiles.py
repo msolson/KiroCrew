@@ -313,8 +313,8 @@ def _configure_set(key: str, value: str, profile: str) -> str | None:
     rc, _out, err = engine.run_aws(["configure", "set", key, value], profile)
     if rc != 0:
         raw = (err or f"aws configure set {key} failed").strip()[:200]
-        raw, _ = redact_credentials(raw)
         raw, _ = redact_exfiltration_urls(raw)
+        raw, _ = redact_credentials(raw)
         return raw
     return None
 

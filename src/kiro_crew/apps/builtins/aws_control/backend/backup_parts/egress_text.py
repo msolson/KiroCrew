@@ -35,8 +35,8 @@ def _redact_egress(text: str) -> str:
     SHAPES, the other removes URLs whose destination would exfiltrate. A conversation
     holds both, because a model was shown a key and was asked to POST somewhere.
     """
-    text, _ = redact_credentials(text)
     text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_credentials(text)
     return text
 
 

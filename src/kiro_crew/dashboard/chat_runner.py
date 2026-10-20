@@ -2570,8 +2570,8 @@ async def _run_chat(
                     state, slot, "assistant", "🗑️ Conversation cleared.", "msg msg-a"
                 )
             elif event.kind == EVENT_AGENT_SWITCHED:
-                new_agent, _ = redact_credentials(event.text)
-                new_agent, _ = redact_exfiltration_urls(new_agent)
+                new_agent, _ = redact_exfiltration_urls(event.text)
+                new_agent, _ = redact_credentials(new_agent)
                 if new_agent and (
                     private_member or (slot.mode == "member" and new_agent != slot.agent)
                 ):
@@ -3625,8 +3625,8 @@ async def _run_chat(
                 logger.info("Deferred compaction result: %s", compaction_result)
                 if compaction_result["type"] == "completed":
                     _restore_skills_context_after_compaction(turn)
-                    summary, _ = redact_credentials(compaction_result.get("summary", ""))
-                    summary, _ = redact_exfiltration_urls(summary)
+                    summary, _ = redact_exfiltration_urls(compaction_result.get("summary", ""))
+                    summary, _ = redact_credentials(summary)
                     msg = (
                         f"✅ Conversation compacted: {summary}"
                         if summary
@@ -3647,8 +3647,8 @@ async def _run_chat(
                     # the text is backend-echoed, so it is not trusted to be
                     # free of credentials or exfiltration URLs even though the
                     # provider already redacts once at its own boundary.
-                    error, _ = redact_credentials(compaction_result.get("summary", ""))
-                    error, _ = redact_exfiltration_urls(error)
+                    error, _ = redact_exfiltration_urls(compaction_result.get("summary", ""))
+                    error, _ = redact_credentials(error)
                     error = error.strip()
                     if len(error) > _COMPACT_FAIL_REASON_MAX_CHARS:
                         # A notice is a one-line receipt, not a log: a provider

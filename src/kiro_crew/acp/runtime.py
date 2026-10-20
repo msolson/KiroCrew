@@ -3067,8 +3067,8 @@ class AcpRuntime:
         # the SEL, the debug line lands in the gateway log -- so redact before
         # either, and before any cut, which then cannot split a secret into a
         # half the redactor fails to recognise.
-        tail, _ = redact_credentials(tail)
         tail, _ = redact_exfiltration_urls(tail)
+        tail, _ = redact_credentials(tail)
         last = next((ln for ln in reversed(tail.splitlines()) if ln.strip()), "")
         if last:
             logger.debug(

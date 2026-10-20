@@ -182,8 +182,8 @@ async def _handle_compact(
             """Redact backend-echoed, LLM-influenced compaction text before
             it reaches the external Discord surface: normal turns get this
             via the shared TurnDriver, but this path sends directly."""
-            cleaned, _ = redact_credentials(text or "")
-            cleaned, _ = redact_exfiltration_urls(cleaned)
+            cleaned, _ = redact_exfiltration_urls(text or "")
+            cleaned, _ = redact_credentials(cleaned)
             return cleaned
 
         try:

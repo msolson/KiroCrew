@@ -263,8 +263,8 @@ def list_pushable(account: str) -> list[dict[str, Any]]:
     from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
     def _clean(text: str) -> str:
-        text, _ = redact_credentials(text)
         text, _ = redact_exfiltration_urls(text)
+        text, _ = redact_credentials(text)
         return text
 
     ledger = read_ledger().get(account, {})
@@ -335,8 +335,8 @@ def push_artifact(
         )
 
     def _clean(text: str) -> str:
-        text, _ = redact_credentials(text)
         text, _ = redact_exfiltration_urls(text)
+        text, _ = redact_credentials(text)
         return text
 
     meta = {

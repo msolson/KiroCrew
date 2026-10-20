@@ -142,8 +142,8 @@ def _redact(text: str) -> str:
     way out, so the record on disk is clean too.
     """
     try:
-        out, _ = redact_credentials(text)
-        out, _ = redact_exfiltration_urls(out)
+        out, _ = redact_exfiltration_urls(text)
+        out, _ = redact_credentials(out)
         return out
     except Exception:  # noqa: BLE001 - redaction must never mask the error itself
         logger.debug("job text redaction failed", exc_info=True)

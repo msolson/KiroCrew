@@ -232,8 +232,8 @@ def local_knowledge_search(name: str, args: dict[str, Any]) -> str:
     # dashboard-readable, so redact it before any audit write (mirrors
     # knowledge_add_document's audit_title). The search itself keeps the
     # raw query.
-    audit_query, _ = redact_credentials(query)
-    audit_query, _ = redact_exfiltration_urls(audit_query)
+    audit_query, _ = redact_exfiltration_urls(query)
+    audit_query, _ = redact_credentials(audit_query)
 
     if source_id is not None:
         # An unknown source would silently degrade the seed legs to empty; tell
@@ -359,8 +359,8 @@ def knowledge_add_document(name: str, args: dict[str, Any]) -> str:
     # The title arrives straight from the tool call, so it reaches the audit
     # log before the server-side redaction the document body gets. SEL is
     # persisted and readable, so redact it here.
-    audit_title, _ = redact_credentials(title)
-    audit_title, _ = redact_exfiltration_urls(audit_title)
+    audit_title, _ = redact_exfiltration_urls(title)
+    audit_title, _ = redact_credentials(audit_title)
     if resp.get("error"):
         mcp_core.sel().log_tool_invocation(
             session_key=mcp_core._resolve_session_key(),

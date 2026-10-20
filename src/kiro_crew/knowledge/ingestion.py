@@ -237,8 +237,8 @@ def _redact_for_ingest(text: str) -> str:
     credential pasted into a file never reaches the extraction worker or the index.
     Same helper the artifact path uses on its body.
     """
-    cleaned, _ = redact_credentials(text)
-    cleaned, _ = redact_exfiltration_urls(cleaned)
+    cleaned, _ = redact_exfiltration_urls(text)
+    cleaned, _ = redact_credentials(cleaned)
     return cleaned
 
 

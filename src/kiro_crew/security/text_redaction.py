@@ -1,7 +1,11 @@
 """The package's redaction entry points: whole text, audit samples and streams.
 
-:func:`redact` and :func:`redact_with_findings` run the two baseline passes over a
-whole string in their one correct order, exfiltration URLs before credentials.
+:func:`redact_with_findings` is the one composed pass: it runs the two baseline
+passes over a whole string in their one correct order, exfiltration URLs before
+credentials. :func:`redact` and :func:`redact_and_truncate` call it, so the order
+lives in one function. Code outside this package that hand-sequences the two raw
+passes must keep that order; ``test_redaction_call_order.py`` fails on a site
+that runs credentials first.
 :func:`redact_and_truncate` redacts BEFORE it truncates, so a secret straddling the
 cut cannot leak as a fragment. :class:`StreamRedactor` redacts streamed output chunk
 by chunk, holding back a trailing credential-class run until it is complete. Every
@@ -461,11 +465,4 @@ def redact_and_truncate(text: str, max_chars: int = 4000) -> str:
     would cut a secret in half, leaving a prefix that fails to match the
     credential regex and therefore escapes redaction.
     """
-    # Owners of the re-exported names read below, resolved through the
-    # import system so the value is read from the one place it lives.
-    _exfil = _submodule("exfil")
-    _redaction = _submodule("redaction")
-
-    return _redaction.redact_credentials(_exfil.redact_exfiltration_urls(text or "")[0])[0][
-        :max_chars
-    ]
+    return redact_with_findings(text or "")[0][:max_chars]

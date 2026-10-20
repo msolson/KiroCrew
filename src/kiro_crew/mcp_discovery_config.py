@@ -282,8 +282,8 @@ def _display_transport(value: Any) -> str:
         text = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
     except (TypeError, ValueError):
         text = type(value).__name__
-    text, _ = redact_credentials(text)
     text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_credentials(text)
     if len(text) > _MALFORMED_TRANSPORT_MAX:
         text = text[:_MALFORMED_TRANSPORT_MAX] + "..."
     return text

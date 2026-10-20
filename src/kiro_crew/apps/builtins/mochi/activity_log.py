@@ -145,8 +145,8 @@ def log_activity(data_dir: str | Path, kind: str, content: str) -> None:
     Redacting at the chokepoint (not at the ~8 call sites) is deliberate: a new
     caller cannot forget it.
     """
-    content, _ = redact_credentials(content)
     content, _ = redact_exfiltration_urls(content)
+    content, _ = redact_credentials(content)
     base = Path(data_dir)
     path = base / LOG_FILE
     # Lock the whole read-modify-write. This append log is written from several

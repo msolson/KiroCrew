@@ -66,8 +66,8 @@ def _redact_finding(finding: dict) -> dict:
         return {k: _mask(v) for k, v in finding.items()}
 
     def _redact_str(s: str) -> str:
-        cleaned, _ = redact_credentials(s)
-        cleaned, _ = redact_exfiltration_urls(cleaned)
+        cleaned, _ = redact_exfiltration_urls(s)
+        cleaned, _ = redact_credentials(cleaned)
         return cleaned
 
     def _redact_value(val: Any) -> Any:

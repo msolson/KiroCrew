@@ -503,8 +503,8 @@ async def api_mcp_servers(request: web.Request) -> web.Response:
         _stamp_config_state(d, global_mcps, kirocrew_mcps)
         err = d.get("error")
         if err:
-            err, _ = redact_credentials(err)
             err, _ = redact_exfiltration_urls(err)
+            err, _ = redact_credentials(err)
             d["error"] = err
         result.append(d)
     # Annotated HERE too, not only on the probe endpoints. This is the endpoint

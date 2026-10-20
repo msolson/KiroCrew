@@ -153,8 +153,8 @@ def list_section(
         # other tools): a key embedding a credential or beacon URL must not
         # reach the dashboard verbatim. Same double-pass discipline as every
         # other egress surface.
-        name, _ = redact_credentials(name)
         name, _ = redact_exfiltration_urls(name)
+        name, _ = redact_credentials(name)
         return name
 
     files = [
@@ -1109,8 +1109,8 @@ def search_keys(
     """
 
     def _safe_name(name: str) -> str:
-        name, _ = redact_credentials(name)
         name, _ = redact_exfiltration_urls(name)
+        name, _ = redact_credentials(name)
         return name
 
     prefix = SECTION_PREFIXES[section]

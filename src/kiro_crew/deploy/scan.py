@@ -208,8 +208,8 @@ def summarize(findings: list[Finding]) -> str:
     lines = [f"⚠️ {len(findings)} potential issue(s) before publishing publicly: {counts}.",
              "Review each — publishing makes this content world-readable:"]
     for f in findings[:20]:
-        snippet, _ = redact_credentials(f.snippet)
-        snippet, _ = redact_exfiltration_urls(snippet)
+        snippet, _ = redact_exfiltration_urls(f.snippet)
+        snippet, _ = redact_credentials(snippet)
         lines.append(f"  • line {f.line} [{f.kind}]: {snippet}")
     if len(findings) > 20:
         lines.append(f"  • … and {len(findings) - 20} more")

@@ -85,8 +85,8 @@ def _safe_field(text: str) -> str:
     """
     from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
-    text, _ = redact_credentials(text)
     text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_credentials(text)
     return text
 
 

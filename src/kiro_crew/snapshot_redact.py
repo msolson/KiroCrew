@@ -320,8 +320,8 @@ def _scrub(text: str) -> tuple[str, int]:
     The shared pair runs first so its warnings stay the primary signal; the egress-only
     pass then closes the shapes it does not recognise.
     """
-    cleaned, cred_warnings = redact_credentials(text)
-    cleaned, url_warnings = redact_exfiltration_urls(cleaned)
+    cleaned, url_warnings = redact_exfiltration_urls(text)
+    cleaned, cred_warnings = redact_credentials(cleaned)
     cleaned, extra = _scrub_unrecognised(cleaned)
     return cleaned, len(cred_warnings) + len(url_warnings) + extra
 

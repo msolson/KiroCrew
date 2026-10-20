@@ -361,8 +361,8 @@ def _safe_error(exc: BaseException) -> str:
     """
     from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
-    text, _ = redact_credentials(str(exc))
-    text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_exfiltration_urls(str(exc))
+    text, _ = redact_credentials(text)
     return text
 
 

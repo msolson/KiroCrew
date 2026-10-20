@@ -213,8 +213,8 @@ def _redact_acp_string(s: str) -> str:
     """
     if not s:
         return s
-    s, _ = redact_credentials(s)
     s, _ = redact_exfiltration_urls(s)
+    s, _ = redact_credentials(s)
     return s
 
 

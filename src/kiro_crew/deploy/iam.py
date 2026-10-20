@@ -835,8 +835,8 @@ def reachability_check(profile: str) -> dict[str, Any]:
     rc, out, err = engine.run_aws(["sts", "get-caller-identity", "--output", "json"], profile)
     if rc != 0:
         raw = (err or "could not resolve credentials").strip()[:200]
-        raw, _ = redact_credentials(raw)
         raw, _ = redact_exfiltration_urls(raw)
+        raw, _ = redact_credentials(raw)
         result["detail"] = raw
         result["note"] = "Profile did not resolve — run `aws sso login --profile <name>` and retry."
         return result

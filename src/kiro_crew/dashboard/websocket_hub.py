@@ -649,8 +649,8 @@ class WebSocketHub:
         safe_data: dict[str, Any] = {}
         for key, value in data.items():
             if isinstance(value, str):
-                value, _ = redact_credentials(value)
                 value, _ = redact_exfiltration_urls(value)
+                value, _ = redact_credentials(value)
             safe_data[key] = value
         payload: dict[str, Any] = {
             "type": "browser_event",

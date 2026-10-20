@@ -124,8 +124,8 @@ def _log_task_exception(task: asyncio.Task[Any]) -> None:
     if exc is not None:
         try:
             tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-            redacted_tb, _ = redact_credentials(tb)
-            redacted_tb, _ = redact_exfiltration_urls(redacted_tb)
+            redacted_tb, _ = redact_exfiltration_urls(tb)
+            redacted_tb, _ = redact_credentials(redacted_tb)
             logger.error("Background task failed:\n%s", redacted_tb)
         except Exception as redaction_err:
             # Include the redaction failure class so bugs in the redactor are visible,

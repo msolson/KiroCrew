@@ -101,8 +101,8 @@ def _redact_for_ingest(text: str) -> str:
     (never persist secrets), run the same redaction the chat
     path applies before the text lands in the Knowledge store.
     """
-    cleaned, _ = redact_credentials(text)
-    cleaned, _ = redact_exfiltration_urls(cleaned)
+    cleaned, _ = redact_exfiltration_urls(text)
+    cleaned, _ = redact_credentials(cleaned)
     return cleaned
 
 

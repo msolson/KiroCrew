@@ -92,8 +92,8 @@ async def api_slack_pins(request: web.Request) -> web.Response:
             # it to the caller (same output contract as send_message).
             pins = await slack.list_pins(channel)
             for pin in pins:
-                safe_text, _ = redact_credentials(pin.get("text", ""))
-                safe_text, _ = redact_exfiltration_urls(safe_text)
+                safe_text, _ = redact_exfiltration_urls(pin.get("text", ""))
+                safe_text, _ = redact_credentials(safe_text)
                 pin["text"] = safe_text
             result["pins"] = pins
         _sel().log_tool_invocation(
@@ -107,8 +107,8 @@ async def api_slack_pins(request: web.Request) -> web.Response:
         )
         return web.json_response(result)
     except Exception as e:
-        safe_error, _ = redact_credentials(str(e))
-        safe_error, _ = redact_exfiltration_urls(safe_error)
+        safe_error, _ = redact_exfiltration_urls(str(e))
+        safe_error, _ = redact_credentials(safe_error)
         _sel().log_tool_invocation(
             session_key="api",
             source="api",
@@ -195,8 +195,8 @@ async def api_slack_reactions(request: web.Request) -> web.Response:
         )
         return web.json_response({"ok": True})
     except Exception as e:
-        safe_error, _ = redact_credentials(str(e))
-        safe_error, _ = redact_exfiltration_urls(safe_error)
+        safe_error, _ = redact_exfiltration_urls(str(e))
+        safe_error, _ = redact_credentials(safe_error)
         _sel().log_tool_invocation(
             session_key="api",
             source="api",
@@ -315,8 +315,8 @@ async def api_slack_profile(request: web.Request) -> web.Response:
                     downstream_service="slack",
                     resources=f"user={user_id} reason=missing_scope needed={needed}",
                 )
-                needed, _ = redact_credentials(needed)
                 needed, _ = redact_exfiltration_urls(needed)
+                needed, _ = redact_credentials(needed)
                 return web.json_response({"error": _missing_scope_message(needed)}, status=403)
         logger.exception("slack-profile: failed for %s", user_id)
         _sel().log_tool_invocation(

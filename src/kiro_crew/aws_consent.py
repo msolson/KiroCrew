@@ -788,6 +788,6 @@ def _redacted(raw: str) -> str:
 
     lines = raw.strip().splitlines()
     first = lines[0] if lines else ""
-    first, _ = redact_credentials(first)
     first, _ = redact_exfiltration_urls(first)
+    first, _ = redact_credentials(first)
     return first[:300]

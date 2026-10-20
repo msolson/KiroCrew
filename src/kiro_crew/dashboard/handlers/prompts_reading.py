@@ -272,8 +272,8 @@ def _local_prompt_entry(name: str, project_dir: Path | None) -> dict[str, Any] |
 def _redact_prompt(p: dict[str, Any]) -> None:
     """Redact credential patterns and exfiltration URLs from prompt metadata."""
     for field in ("description", "path"):
-        p[field], _ = redact_credentials(p[field])
         p[field], _ = redact_exfiltration_urls(p[field])
+        p[field], _ = redact_credentials(p[field])
 
 
 async def api_prompts(request: web.Request) -> web.Response:

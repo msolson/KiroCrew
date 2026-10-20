@@ -24,8 +24,8 @@ def redact_tree(value: Any) -> Any:
     through unchanged.
     """
     if isinstance(value, str):
-        redacted, _ = redact_credentials(value)
-        redacted, _ = redact_exfiltration_urls(redacted)
+        redacted, _ = redact_exfiltration_urls(value)
+        redacted, _ = redact_credentials(redacted)
         return redacted
     if isinstance(value, list):
         return [redact_tree(item) for item in value]

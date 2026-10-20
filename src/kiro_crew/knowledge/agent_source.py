@@ -92,8 +92,8 @@ def _redact_for_ingest(text: str) -> str:
     persist secrets: run the same redaction the artifact-ingest path applies
     before the text crosses into the store.
     """
-    cleaned, _ = redact_credentials(text)
-    cleaned, _ = redact_exfiltration_urls(cleaned)
+    cleaned, _ = redact_exfiltration_urls(text)
+    cleaned, _ = redact_credentials(cleaned)
     return cleaned
 
 

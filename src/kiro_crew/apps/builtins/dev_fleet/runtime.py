@@ -36,8 +36,8 @@ logger = logging.getLogger("kiro_crew.apps.builtins.dev_fleet.server")
 
 def _redact(text: str) -> str:
     """Apply both credential and exfiltration-URL redaction to output text."""
-    text, _ = redact_credentials(text)
     text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_credentials(text)
     return text
 
 

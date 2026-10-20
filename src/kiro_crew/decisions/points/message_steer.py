@@ -212,8 +212,8 @@ def redacted(text: str, limit: int) -> str:
     try:
         from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
-        cleaned, _warnings = redact_credentials(str(text))
-        cleaned, _warnings = redact_exfiltration_urls(cleaned)
+        cleaned, _warnings = redact_exfiltration_urls(str(text))
+        cleaned, _warnings = redact_credentials(cleaned)
     except Exception:
         logger.debug("message.steer: redaction failed; sending no turn text", exc_info=True)
         return ""

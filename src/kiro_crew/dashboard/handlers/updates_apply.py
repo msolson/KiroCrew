@@ -103,8 +103,8 @@ async def _build_frontend(proj: str, state: DashboardState) -> None:
     from kiro_crew import frontend
 
     def _push(step: str, msg: str) -> None:
-        msg, _ = redact_credentials(msg)
         msg, _ = redact_exfiltration_urls(msg)
+        msg, _ = redact_credentials(msg)
         # frontend emits ("warning", detail); show it as a non-fatal build note.
         state.push_update_progress("building", msg)
 
@@ -136,8 +136,8 @@ async def _venv_pip_install(proj: str, state: DashboardState) -> bool:
     def _publish(step: str, message: str) -> None:
         # dep_sync hands pip's output over raw; this is the surface that publishes
         # it, so redaction and the length cap belong here.
-        message, _ = redact_credentials(message)
         message, _ = redact_exfiltration_urls(message)
+        message, _ = redact_credentials(message)
         if len(message) > 1000:
             message = message[:1000] + "\n…(truncated)"
         state.push_update_progress(step, message)

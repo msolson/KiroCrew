@@ -232,8 +232,8 @@ def _redact_warning(msg: str) -> str:
     """Redact credentials and exfiltration URLs from warning strings."""
     from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
-    msg, _ = redact_credentials(msg)
     msg, _ = redact_exfiltration_urls(msg)
+    msg, _ = redact_credentials(msg)
     return msg
 
 

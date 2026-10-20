@@ -221,16 +221,16 @@ async def _maybe_fire_pre_tool_hooks(self: AcpClient, tool_event: "AcpEvent") ->
         # Redact tool_input before firing user hooks (parity with Post path); addresses security-controls review.
         _redacted_input = tool_event.tool_input
         if isinstance(_redacted_input, str):
-            _redacted_input, _ = redact_credentials(_redacted_input)
             _redacted_input, _ = redact_exfiltration_urls(_redacted_input)
+            _redacted_input, _ = redact_credentials(_redacted_input)
         elif _redacted_input is not None:
             # Non-str (dict/list) inputs must ALSO be redacted, not bypassed by
             # the isinstance(str) guard. Serialize to JSON, redact the string,
             # and pass the redacted JSON string (fire_tool_hooks json.loads it,
             # so it expects a str | None — do NOT deserialize back to an object).
             _serialized = json.dumps(_redacted_input)
-            _serialized, _ = redact_credentials(_serialized)
             _serialized, _ = redact_exfiltration_urls(_serialized)
+            _serialized, _ = redact_credentials(_serialized)
             _redacted_input = _serialized
         await fire_tool_hooks(
             hook_store,
@@ -281,8 +281,8 @@ async def _maybe_fire_post_tool_hooks(self: AcpClient, tool_result_event: "AcpEv
         tool_name = tool_name[9:]
     try:
         # Redact before firing user hooks (parity with chat_runner PostToolUse); addresses security-controls review.
-        _redacted_output, _ = redact_credentials(tool_result_event.tool_output or "")
-        _redacted_output, _ = redact_exfiltration_urls(_redacted_output)
+        _redacted_output, _ = redact_exfiltration_urls(tool_result_event.tool_output or "")
+        _redacted_output, _ = redact_credentials(_redacted_output)
         # Bound the payload handed to user hook scripts to the first 2000 chars
         # (parity with chat_runner/subagent.py [:2000]). Redact-then-truncate is
         # deliberate: redact the FULL output first so secrets anywhere are scrubbed,

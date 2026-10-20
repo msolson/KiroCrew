@@ -199,8 +199,8 @@ def _redact_meta(text: str) -> str:
     detail response is what the textarea saves back, so a redaction there would
     overwrite the user's own file with ``[REDACTED]`` markers.
     """
-    out, _ = redact_credentials(text)
-    out, _ = redact_exfiltration_urls(out)
+    out, _ = redact_exfiltration_urls(text)
+    out, _ = redact_credentials(out)
     return out
 
 

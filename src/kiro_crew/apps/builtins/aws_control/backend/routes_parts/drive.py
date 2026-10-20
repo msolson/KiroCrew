@@ -390,8 +390,8 @@ def _redact_preview(data: bytes, size: int) -> tuple[str, bool, bool]:
     still have seen only partially, and a split run is never shown.
     """
     text = data.decode("utf-8", errors="replace")
-    text, credential_hits = redact_credentials(text)
     text, url_hits = redact_exfiltration_urls(text)
+    text, credential_hits = redact_credentials(text)
     truncated = size > _PREVIEW_MAX_BYTES
     if truncated:
         text = _trim_preview(text, _PREVIEW_MAX_BYTES)

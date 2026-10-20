@@ -413,8 +413,8 @@ def _trimmed_stderr(err: str, limit: int = 200) -> str:
     """
     from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
-    text, _ = redact_credentials(err.strip())
-    text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_exfiltration_urls(err.strip())
+    text, _ = redact_credentials(text)
     return text[:limit]
 
 

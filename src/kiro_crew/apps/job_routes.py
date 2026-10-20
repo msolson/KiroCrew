@@ -85,8 +85,8 @@ def _safe(text: str) -> str:
     try:
         from kiro_crew.security import redact_credentials, redact_exfiltration_urls
 
-        out, _ = redact_credentials(text)
-        out, _ = redact_exfiltration_urls(out)
+        out, _ = redact_exfiltration_urls(text)
+        out, _ = redact_credentials(out)
         return out[:500]
     except Exception:  # noqa: BLE001 - redaction must not mask the error
         return text[:500]

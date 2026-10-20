@@ -118,8 +118,8 @@ class EventBus:
     def _redact_value(self, value: Any) -> Any:
         """Recursively redact string values in nested structures."""
         if isinstance(value, str):
-            value, _ = redact_credentials(value)
             value, _ = redact_exfiltration_urls(value)
+            value, _ = redact_credentials(value)
             return value
         if isinstance(value, dict):
             return {k: self._redact_value(v) for k, v in value.items()}

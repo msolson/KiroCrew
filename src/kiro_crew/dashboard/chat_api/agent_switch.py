@@ -91,11 +91,11 @@ async def _append_session_switch_notice(slot: _ChatSlot, switch: str, value: str
     if not _has_conversation(slot):
         return
     # Truncation can remove the syntax that makes a credential recognizable.
-    value, _ = redact_credentials(value)
     value, _ = redact_exfiltration_urls(value)
+    value, _ = redact_credentials(value)
     text = session_switch_notice(switch, value)
-    text, _ = redact_credentials(text)
     text, _ = redact_exfiltration_urls(text)
+    text, _ = redact_credentials(text)
     slot.append("assistant", text, "msg msg-a", meta={"kind": SESSION_SWITCH_KIND})
 
 
@@ -230,8 +230,8 @@ async def api_chat_slot_agent(request: web.Request) -> web.Response:
             text = switch_announcement(
                 str(outcome.get("agent") or slot.agent), str(outcome.get("warning") or "")
             )
-            text, _ = redact_credentials(text)
             text, _ = redact_exfiltration_urls(text)
+            text, _ = redact_credentials(text)
             slot.append("assistant", text, "msg msg-a")
             state.push_slots_update()
     return resp

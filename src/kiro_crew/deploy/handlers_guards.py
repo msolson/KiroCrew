@@ -65,8 +65,8 @@ def _redact_text(s: str) -> str:
     _mask_credential is applied at Finding creation time, this catches any path
     where raw matched content leaks through.
     """
-    s, _ = redact_credentials(s)
     s, _ = redact_exfiltration_urls(s)
+    s, _ = redact_credentials(s)
     return s
 
 
