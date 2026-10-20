@@ -114,28 +114,29 @@ class TestBroadcastForwarding:
         assert with_empty.body == without.body == {"message": "go", "mode": "queue", "all": True}
 
     @pytest.mark.parametrize("args", [{}, {"targets": []}, {"targets": None}, {"all": False}])
-    def test_a_call_with_no_audience_sends_nothing(self, args) -> None:
+    def test_a_call_with_no_audience_reaches_the_backend_bare_and_its_refusal_is_shown(
+        self, args
+    ) -> None:
         """The defect: a model that computed an empty audience and passed it on
-        reached every session it created. The refusal happens before any request,
-        so nothing is delivered and the model is told which argument to add."""
-        dash = InMemoryDashboardClient({"POST /api/session-control/broadcast": {"ok": True}})
-        ctx = ToolContext(dash, Caller.strict("dashboard:chat-1-100"))
-        out = TABLE.call("session_broadcast", {"message": "stop", "mode": "steer", **args}, ctx)
+        reached every session it created. The tool forwards neither `targets` nor
+        `all`, so the backend sees the same bare body whichever spelling arrived,
+        refuses it, and the model reads the refusal that names `all: true`."""
+        refusal = {
+            "error": "no audience selected: name the sessions in targets, or pass all: true",
+            "code": "target_required",
+        }
+        out, sent = _bc({"message": "stop", "mode": "steer", **args}, refusal)
+        assert sent.body == {"message": "stop", "mode": "steer"}
         assert out.startswith("Error:")
-        assert "targets" in out and "all: true" in out
-        assert dash.requests == []
+        assert "all: true" in out
 
-    def test_targets_beside_all_is_refused_without_a_request(self) -> None:
-        dash = InMemoryDashboardClient({"POST /api/session-control/broadcast": {"ok": True}})
-        ctx = ToolContext(dash, Caller.strict("dashboard:chat-1-100"))
-        out = TABLE.call(
-            "session_broadcast",
-            {"message": "stop", "mode": "queue", "all": True, "targets": ["chat-2"]},
-            ctx,
+    def test_targets_beside_all_are_both_forwarded_for_the_backend_to_refuse(self) -> None:
+        refusal = {"error": "pass targets or all: true, not both", "code": "audience_conflict"}
+        out, sent = _bc(
+            {"message": "stop", "mode": "queue", "all": True, "targets": ["chat-2"]}, refusal
         )
-        assert out.startswith("Error:")
-        assert "not both" in out
-        assert dash.requests == []
+        assert sent.body["all"] is True and sent.body["targets"] == ["chat-2"]
+        assert out.startswith("Error:") and "not both" in out
 
     def test_a_non_boolean_all_is_refused_without_a_request(self) -> None:
         """A string such as "false" is truthy in Python; it must never select the fleet."""
