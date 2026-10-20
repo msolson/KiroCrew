@@ -377,11 +377,12 @@ def test_a_replaced_flag_vocabulary_reaches_the_redactor(facade, monkeypatch):
     ``_redacted_command`` prints: an unknown long flag is withheld until the
     vocabulary names it."""
     cmd = "pytest --zzz"
-    assert facade._redacted_command(cmd, (0, len(cmd))) == "pytest,+1"
+    argv = cmd.split()
+    assert facade._redacted_command(cmd, (0, len(cmd)), argv) == "pytest,+1"
     monkeypatch.setattr(
         facade, "_SAFE_LONG_FLAG_NAMES", frozenset(facade._SAFE_LONG_FLAG_NAMES | {"--zzz"})
     )
-    assert facade._redacted_command(cmd, (0, len(cmd))) == "pytest,--zzz"
+    assert facade._redacted_command(cmd, (0, len(cmd)), argv) == "pytest,--zzz"
 
 
 # --------------------------------------------------------------------------

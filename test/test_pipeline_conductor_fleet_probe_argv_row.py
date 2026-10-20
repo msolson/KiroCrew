@@ -271,7 +271,7 @@ def test_no_digits_a_command_carried_ever_reach_the_printed_command(mod, secret)
         secret
     ), f"{secret} is not alias-shaped, so it proves nothing"
     cmd = f"pytest -q --token {secret} test/x.py"
-    out = mod._redacted_command(cmd, (0, len(cmd)))
+    out = mod._redacted_command(cmd, (0, len(cmd)), cmd.split())
     digits = secret.partition("-")[2]
     assert digits not in out, f"the token's own text reached cmd=: {out}"
     assert mod._alias_program_label(secret) in out.split(","), f"no label stood in for it: {out}"
@@ -295,3 +295,162 @@ def test_every_alias_the_pattern_admits_has_a_label(mod):
     # cannot obtain a runner label for a word that is not a versioned alias.
     for not_an_alias in ("pytest-abc", "pytest-", "py.test-v3", "pytest-3x", "pytest"):
         assert mod._alias_program_label(not_an_alias) is None, f"{not_an_alias} got a runner label"
+
+
+# --------------------------------------------------------------------------
+# ``cmd=`` reads the real argv tokens, so an in-argument separator is not a cut
+# --------------------------------------------------------------------------
+
+
+def test_a_separator_inside_an_argument_withholds_the_token_after_it(mod, tmp_path, monkeypatch):
+    """A ``|`` inside one argument no longer cuts the command short.
+
+    ``/proc`` separates arguments with NUL and the probe joins them with spaces, so a
+    ``|`` carried inside an option's value reads like shell syntax in the joined text.
+    The old scan cut the command there, dropped every token past it WITHOUT counting it,
+    and the ``+<n>`` field then described a shorter command than the process ran. Reading
+    the real argv tokens removes the ambiguity: the token after the separator is
+    withheld like any other target -- never revealed -- and it is COUNTED, so ``+<n>``
+    names the whole command. The separator itself never splits a token.
+    """
+    root = host_proc(tmp_path, monkeypatch)
+    fleet = tmp_path / "wt"
+    fleet.mkdir()
+    secret = "PLACEHOLDER-cred"
+    argv = [
+        "pytest",
+        *UNBUDGETED,
+        "--log-format=%(levelname)s|%(message)s",
+        "--token",
+        secret,
+        "t/",
+    ]
+    fleet_pid(root, fleet, "460", argv)
+    lines, _host = mod._host_lines({"fleet_worktrees": [str(fleet)]})
+    assert len(lines) == 1, lines
+    cmd = lines[0].split("cmd=", 1)[1].split()[0]
+    # The token after the separator is withheld, not printed -- the redaction floor.
+    assert secret not in cmd, f"a token past the in-argument separator was revealed: {cmd}"
+    assert "PLACEHOLDER" not in cmd, cmd
+    # Four tokens sit outside the printed window: the log-format option, --token, its
+    # value, and the target. All four are counted, so +<n> describes the whole command
+    # rather than the piece left of the first in-argument separator.
+    assert cmd == "pytest,-n,+4", f"the withheld count did not cover the whole command: {cmd}"
+
+
+def test_a_separator_after_a_key_assignment_does_not_fabricate_a_launcher(
+    mod, tmp_path, monkeypatch
+):
+    """A dropped leading ``KEY=`` no longer promotes the next token into ``argv[0]``.
+
+    The process ran ``MY_KEY=abc|python`` as its ``argv[0]`` -- an inline environment
+    assignment, not a program. The old scan cut at the ``|`` inside that first argument,
+    which discarded the assignment and left ``python`` in the ``index == 0`` launcher
+    position, so the field printed ``python`` as a launcher the process never ran.
+    Reading the real argv keeps the assignment at index 0, where it is withheld as an
+    assignment, so the launcher the line shows is the one the process actually ran --
+    here, none, because ``argv[0]`` is not a program name.
+    """
+    root = host_proc(tmp_path, monkeypatch)
+    fleet = tmp_path / "wt"
+    fleet.mkdir()
+    argv = ["MY_KEY=abc|python", "pytest", *UNBUDGETED, "t/"]
+    fleet_pid(root, fleet, "461", argv)
+    lines, _host = mod._host_lines({"fleet_worktrees": [str(fleet)]})
+    assert len(lines) == 1, lines
+    cmd = lines[0].split("cmd=", 1)[1].split()[0]
+    kept = cmd.split(",")
+    # ``python`` is at argv[1], behind the assignment, so it is never the launcher and
+    # never printed; the fabricated-launcher output is gone.
+    assert "python" not in kept, f"a launcher the process never ran was printed: {cmd}"
+    # The real runner still names the command, its cap flag still prints, and the
+    # assignment + target are withheld and counted.
+    assert cmd == "pytest,-n,+2", cmd
+
+
+def test_the_segment_is_taken_from_argv_when_it_covers_real_tokens(mod):
+    """``_command_segment_tokens`` returns the whole argv for a real exec'd command.
+
+    A real command's kernel argv carries no shell operator between its tokens, so the
+    one command the span names is the whole argv -- returned as whole tokens, never
+    re-split on a separator sitting inside one of them.
+    """
+    argv = ["pytest", "-n4", "a|b", "c"]
+    cmd = " ".join(argv)
+    assert mod._command_segment_tokens(cmd, (0, 6), argv) == argv
+
+
+def test_a_separator_inside_a_whitespaceless_argument_is_data_not_a_cut(mod):
+    """A ``&`` inside a path argument is a path character, so the word stays one token.
+
+    ``/work/R&D/.venv/bin/pytest`` carries a ``&`` but no whitespace, so it is a single
+    real argument, not a shell command string. The match is confined to that one word;
+    keying the rescan on separators would misread it as a command string and drop the
+    launcher, flag and withheld count. Keying on WHITESPACE keeps it a single token, so
+    the whole argv is returned and the runner base reduces out of the path as usual.
+    """
+    argv = ["python", "/work/R&D/.venv/bin/pytest", "-n4", "test/"]
+    cmd = " ".join(argv)
+    hit = cmd.index("/work")
+    span = (hit, hit + len("/work/R&D/.venv/bin/pytest"))
+    assert mod._command_segment_tokens(cmd, span, argv) == argv
+    # End to end: the launcher, the runner, its flag and the target's count all survive.
+    assert mod._redacted_command(cmd, span, argv) == "python,pytest,-n,+1"
+
+
+def test_a_shell_wrapper_command_string_is_scanned_the_pre_fix_way(mod):
+    """When the match sits inside ONE whitespace-bearing argv element, scan the joined cmd.
+
+    A shell wrapper carries its command as whitespace-separated pieces inside one ``-c``
+    argument, which the argv split cannot see into. Keyed on whitespace (not a
+    separator), that element is recognised as a command string and the whole-cmd joined
+    scan runs -- the pre-fix behaviour -- so the wrapper's own leading tokens are named
+    beside the program rather than collapsing the command string into one withheld token.
+    """
+    argv = ["sh", "-c", "pytest -n4 t/"]
+    cmd = " ".join(argv)
+    span = (cmd.index("pytest"), cmd.index("pytest") + len("pytest"))
+    tokens = mod._command_segment_tokens(cmd, span, argv)
+    # The wrapper's leading tokens are kept beside the program, as before the fix.
+    assert tokens == ["sh", "-c", "pytest", "-n4", "t/"]
+    assert mod._redacted_command(cmd, span, argv) == "sh,-c,pytest,-n,+1"
+
+
+def test_a_command_string_match_does_not_collapse_to_one_withheld_token(mod, tmp_path, monkeypatch):
+    """End to end: a ``-c`` command string still names the program the rule fired on.
+
+    ``script -q -c "pytest -n4 tests"`` runs pytest inside a ``-c`` argument that is not
+    exempted as a wrapper and is not budgeted. Collapsing that element to one token would
+    withhold it and print ``-q,-c,+2`` -- the row would no longer name the program.
+    Recognising the command string keeps the pre-fix ``-q,-c,pytest,-n,+2`` (``script``
+    is not a known launcher base, so it is withheld and counted like any other word).
+    """
+    root = host_proc(tmp_path, monkeypatch)
+    fleet = tmp_path / "wt"
+    fleet.mkdir()
+    fleet_pid(root, fleet, "462", ["script", "-q", "-c", "pytest -n4 tests"])
+    lines, _host = mod._host_lines({"fleet_worktrees": [str(fleet)]})
+    assert len(lines) == 1, lines
+    cmd = lines[0].split("cmd=", 1)[1].split()[0]
+    assert cmd == "-q,-c,pytest,-n,+2", cmd
+
+
+def test_a_token_with_embedded_whitespace_is_withheld_not_printed(mod, tmp_path, monkeypatch):
+    """A kept token is one whitespace-separated field, so it can never hold whitespace.
+
+    Reading the real argv means a token is printed verbatim when it is a known name or
+    flag. The name/flag patterns end in ``$``, which matches before a trailing newline,
+    so an argv element like ``python3\\n`` would be kept as-is and split the one-line
+    ``BANNED`` row in two. A name or flag never carries whitespace, so such a token is
+    withheld (and counted) instead, and the row stays a single line.
+    """
+    root = host_proc(tmp_path, monkeypatch)
+    fleet = tmp_path / "wt"
+    fleet.mkdir()
+    fleet_pid(root, fleet, "463", ["python3\n", "-m", "pytest", "-n", "8", "t/"])
+    lines, _host = mod._host_lines({"fleet_worktrees": [str(fleet)]})
+    assert len(lines) == 1, lines
+    cmd = lines[0].split("cmd=", 1)[1].split()[0]
+    assert "\n" not in cmd, f"a whitespace-bearing token split the line: {cmd!r}"
+    # python3\n is withheld (not a clean launcher name); the runner and flag still print.
+    assert cmd == "-m,pytest,-n,+3", cmd

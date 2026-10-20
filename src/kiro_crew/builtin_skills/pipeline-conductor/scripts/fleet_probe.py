@@ -404,7 +404,68 @@ _MAX_CMD_TOKENS = 8
 _MAX_CMD_TOKEN_CHARS = 48
 
 
-def _redacted_command(cmd: str, span: tuple[int, int]) -> str:
+def _command_segment_tokens(cmd: str, span: tuple[int, int], argv: list[str]) -> list[str]:
+    """The tokens of the one command *span* names, taken from the real *argv*.
+
+    The caller joins ``/proc/<pid>/cmdline`` with single spaces, so each *argv* token
+    occupies a known slice of *cmd*. Mapping the match span back onto those slices is
+    what lets the redactor read REAL tokens rather than re-split the joined string --
+    and re-splitting is the whole defect this guards against, because a ``;``, ``&`` or
+    ``|`` carried inside one argument is indistinguishable from shell syntax once the
+    NUL separators became spaces.
+
+    The decision is about the ONE argv element the match is confined to, if any:
+
+    * The match spans more than one argv token, or lands in a single token that is a
+      WHITESPACELESS word -- a program path, a filename, a target. Then it names a
+      real, exec'd command whose kernel argv carries no shell operator between its
+      tokens, so the WHOLE argv is that one command and every token is returned. A
+      separator INSIDE such a word (``/work/R&D/.venv/bin/pytest``) is a path
+      character, not a command boundary, so the word is a single token and the runner
+      base reduces out of it as usual.
+    * The match is confined to ONE argv element that contains WHITESPACE. That element
+      is a shell wrapper's command string -- several whitespace-separated pieces, and
+      possibly several ``;``-separated commands, living inside one argument (reached
+      only under a custom ``banned_process_res`` rule, since built-in wrapper shapes
+      are exempted before emit). Whitespace is the signal, not a separator: a word
+      with a ``&`` but no space is still one argument, while a command string always
+      has spaces between its pieces. Here the joined-text scan over the whole of *cmd*
+      finds the one command around the match -- the pre-fix behaviour -- so the
+      wrapper's own leading tokens (``sh``, ``-c``) are still named beside the program.
+
+    *cmd* must be ``" ".join(argv)``; the sole caller passes the argv it read the rule
+    against, so the two always agree. The whitespace test is what distinguishes a
+    command string from a word, so a path carrying a separator is never rescanned and
+    the launcher, flag and withheld count the whole-argv guarantee promises all survive.
+    """
+    start, end = span
+
+    def joined_scan(text: str, lo: int, hi: int) -> list[str]:
+        before = [text.rfind(sep, 0, lo) for sep in _COMMAND_SEPARATORS]
+        after = [i for i in (text.find(sep, hi) for sep in _COMMAND_SEPARATORS) if i != -1]
+        return text[max(before) + 1 : min(after) if after else len(text)].split()
+
+    # Each argv token's half-open [offset, offset+len) slice in the space-joined cmd.
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    for token in argv:
+        spans.append((cursor, cursor + len(token)))
+        cursor += len(token) + 1  # the single space the caller joined with
+    touched = [i for i, (lo, hi) in enumerate(spans) if lo < end and start < hi]
+    if len(touched) == 1:
+        element = argv[touched[0]]
+        if any(ch.isspace() for ch in element):
+            # A shell wrapper's command string: its pieces are whitespace-separated
+            # INSIDE this one argv element, so the argv split cannot see them. The
+            # whole-cmd joined scan does, and naming the wrapper's own leading tokens
+            # (``sh -c``) beside the program is the pre-fix behaviour this preserves.
+            return joined_scan(cmd, start, end)
+    # A real exec'd command: the whole argv is one command, read as whole tokens so an
+    # in-argument separator is data, not a cut, and no token escapes the count.
+    return list(argv)
+
+
+def _redacted_command(cmd: str, span: tuple[int, int], argv: list[str]) -> str:
     """The command that matched, reduced to names and flags that can hold no secret.
 
     A pid alone cannot say whether a match is a real run or a filename that reads
@@ -448,23 +509,34 @@ def _redacted_command(cmd: str, span: tuple[int, int]) -> str:
       later vocabulary entry, since nothing printable today approaches it.
 
     The text comes from the same ``cmdline`` read the rule matched, so it cannot
-    disagree with ``rule=`` about what was seen. Splitting on whitespace means an
-    argument containing a space arrives as several tokens; that costs nothing,
-    because the pieces are judged by the same shapes and an unrecognised piece is
-    withheld like any other.
+    disagree with ``rule=`` about what was seen. An argument containing a space is a
+    single token still, because the segment is drawn from *argv* -- the real,
+    NUL-separated tokens -- not from re-splitting the space-joined string, so a space
+    inside one argument no longer breaks it into two.
 
     *span* is where in *cmd* the thing being reported sits, and it selects the one
-    command segment to reduce. A joined-line rule passes its own match span, because a
-    shell string can hold several commands and only the matched one is worth printing.
-    The ARGV path passes the whole of *cmd*: what it reported is a single command read
-    from NUL-separated tokens, so there is no other command in there to narrow to, and
-    a separator character sitting inside one of its arguments is data rather than an
-    end.
+    command segment to reduce. A joined-line rule passes its own match span; the ARGV
+    path passes the whole of *cmd*. The segment is taken from *argv* via
+    ``_command_segment_tokens``, which maps the span to the real tokens it covers.
+    This matters because ``/proc`` joins arguments with spaces, so a ``;``, ``&`` or
+    ``|`` sitting INSIDE one argument is indistinguishable from shell syntax in the
+    joined text: a scan of that text for a separator cuts the command at the
+    in-argument character, drops every token past it WITHOUT counting it (so ``+<n>``
+    understates the command and the guarantee below breaks), and can discard a leading
+    ``KEY=`` assignment so the next token prints in the ``index == 0`` launcher
+    position -- a program the process never ran. Reading the real tokens removes both:
+    a real exec'd command's argv carries no shell operators between its tokens, so the
+    whole command is one segment, and every token outside the printed window is counted.
+    The one case the tokens cannot resolve -- a shell wrapper's command string, where
+    several whitespace-separated pieces live INSIDE one argv element (reported only
+    under a custom rule, since built-in wrappers are exempt) -- falls back to the
+    joined-text span scan, which names the wrapper's leading tokens beside the program.
+
+    Every token the segment holds that is not printed is added to ``withheld``, so
+    ``+<n>`` counts the whole command and a reduced command cannot read as a complete
+    one.
     """
-    start, end = span
-    before = [cmd.rfind(sep, 0, start) for sep in _COMMAND_SEPARATORS]
-    after = [idx for idx in (cmd.find(sep, end) for sep in _COMMAND_SEPARATORS) if idx != -1]
-    segment = cmd[max(before) + 1 : min(after) if after else len(cmd)]
+    segment_tokens = _command_segment_tokens(cmd, span, argv)
     kept: list[str] = []
     withheld = 0
 
@@ -474,8 +546,18 @@ def _redacted_command(cmd: str, span: tuple[int, int]) -> str:
             text = text[:_MAX_CMD_TOKEN_CHARS] + "~"
         kept.append(text)
 
-    for index, token in enumerate(segment.split()):
+    for index, token in enumerate(segment_tokens):
         bare = token.strip("\"'")
+        # A kept token is one field of a whitespace-separated line, so it can never
+        # hold whitespace itself. A program or flag name never does; only an argv
+        # element carrying an embedded space, tab or NEWLINE can -- and a trailing
+        # newline would otherwise slip past the ``$``-anchored name/flag patterns
+        # (``$`` matches before a final ``\n``) and split the BANNED line in two. A
+        # name or flag cannot carry whitespace, so such a token is never printable:
+        # withhold it like any other non-name token, which also counts it.
+        if any(ch.isspace() for ch in bare):
+            withheld += 1
+            continue
         assigned = "=" in bare
         # Dropping the directory is safe only once the token is known not to be an
         # assignment: the strip is what turns a slash-bearing secret VALUE into a
@@ -835,7 +917,7 @@ def _host_lines(cfg: dict[str, Any]) -> tuple[list[str], str]:
                 age_field = "?" if age is None else str(age)
                 lines.append(
                     f"BANNED pid={entry.name} rule={matched} cwd={cwd_class} "
-                    f"age={age_field}s scope={_run_scope(argv)} cmd={_redacted_command(cmd, match_span)}"
+                    f"age={age_field}s scope={_run_scope(argv)} cmd={_redacted_command(cmd, match_span, argv)}"
                 )
     per_cpu = None
     if hasattr(os, "getloadavg"):
