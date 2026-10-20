@@ -416,7 +416,14 @@ def _url_payload_command(n: int) -> str:
 #: paragraphs, glue comments, owner imports, owner list, install, class swap and ``__all__``; and
 #: their ``TYPE_CHECKING`` manifests (two each in ``redaction`` and ``exfil``, one in
 #: ``denied_rules``). Every moved statement is unchanged; no rule, threshold or pass changed.
-_PACKAGE_LINE_BUDGET = 31_509
+#:
+#: Raised again, from 31,509, for pass 4's prefix snapshot: ``redact_credentials``
+#: takes an optional ``token_param_prefixes`` that replaces pass 4's live read, the
+#: diagram scan (``_document_link_spans``, ``_plantuml_verdict``) hands it to its nested
+#: call, and ``_well_formed_token_param_prefixes`` is the one shape gate the live read
+#: and a snapshot share. The 39 lines are the keyword, its threading, docstrings and
+#: comment, and the gate. No rule, pattern or pass changed.
+_PACKAGE_LINE_BUDGET = 31_548
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second
