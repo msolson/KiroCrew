@@ -251,6 +251,141 @@ class TestSlotRemoved:
         emitted.assert_called_once_with()
 
 
+class TestRunstateFieldsRejected:
+    """Volatile run-state and sub-agent fields are not ``push_slot_patch``-eligible.
+
+    ``push_slot_patch`` serves only the per-slot metadata scalars; run-state
+    fields coincide with a transcript append at their call sites (so they need
+    a full frame) and the sub-agent counts are derived off the slot row
+    (``push_subagent_patch`` owns those).
+    """
+
+    def test_running_field_is_not_eligible(self, state: DashboardState) -> None:
+        _slot(state, "chat-a")
+        with pytest.raises(ValueError, match="unsupported slot patch fields: running"):
+            state.push_slot_patch("chat-a", ("running",))
+
+    def test_subagent_count_fields_are_not_eligible(self, state: DashboardState) -> None:
+        _slot(state, "chat-a")
+        with pytest.raises(ValueError, match="subagents_running"):
+            state.push_slot_patch("chat-a", ("subagents_running",))
+
+
+class _Subs:
+    """Fake sub-agent manager: configurable running set and queued depths."""
+
+    def __init__(self, running: set[str], queued: dict[str, int]) -> None:
+        self._running = running
+        self._queued = queued
+
+    def running_agents_for(self, session_key: str) -> bool:
+        return session_key in self._running
+
+    def published_queued_depths(self) -> dict[str, int]:
+        return dict(self._queued)
+
+
+class TestSubagentPatch:
+    """``push_subagent_patch`` ships only the slots whose counts moved."""
+
+    def test_only_changed_rows_are_sent(self, state: DashboardState, monkeypatch) -> None:
+        _slot(state, "chat-a")
+        _slot(state, "chat-b")
+        capable = _WS(patch_capable=True)
+        state.register_ws(capable)  # type: ignore[arg-type]
+        # effective_session_key maps a slot to its session key; key it by slot key.
+        monkeypatch.setattr("kiro_crew.dashboard.chat_utils.effective_session_key", lambda s: s.key)
+        state.subagents = _Subs(running={"chat-a"}, queued={})  # type: ignore[attr-defined]
+        state.serialize_slots = MagicMock(wraps=state.serialize_slots)  # type: ignore[method-assign]
+
+        state.push_subagent_patch()
+
+        # Empty baseline: every live slot's first value is "changed", so both
+        # rows ship once. chat-a is running; chat-b is not.
+        assert capable.frames() == [
+            {
+                "type": "slot_patch",
+                "data": {
+                    "slots": [
+                        {"key": "chat-a", "subagents_running": True, "subagents_queued": 0},
+                        {"key": "chat-b", "subagents_running": False, "subagents_queued": 0},
+                    ]
+                },
+            }
+        ]
+        # The whole list is never serialized; only the patch rows.
+        state.serialize_slots.assert_not_called()
+
+    def test_only_the_moved_row_ships_after_the_baseline(
+        self, state: DashboardState, monkeypatch
+    ) -> None:
+        _slot(state, "chat-a")
+        _slot(state, "chat-b")
+        capable = _WS(patch_capable=True)
+        state.register_ws(capable)  # type: ignore[arg-type]
+        monkeypatch.setattr("kiro_crew.dashboard.chat_utils.effective_session_key", lambda s: s.key)
+        subs = _Subs(running=set(), queued={})
+        state.subagents = subs  # type: ignore[attr-defined]
+
+        state.push_subagent_patch()  # baseline: both at (False, 0)
+        baseline = len(capable.send_str.call_args_list)
+        subs._running = {"chat-a"}  # only chat-a starts a sub-agent
+        state.push_subagent_patch()
+
+        new = [f for f in capable.frames()[baseline:] if f["type"] == "slot_patch"]
+        assert new == [
+            {
+                "type": "slot_patch",
+                "data": {
+                    "slots": [{"key": "chat-a", "subagents_running": True, "subagents_queued": 0}]
+                },
+            }
+        ]
+
+    def test_an_unchanged_second_pass_sends_no_frame(
+        self, state: DashboardState, monkeypatch
+    ) -> None:
+        _slot(state, "chat-a")
+        capable = _WS(patch_capable=True)
+        state.register_ws(capable)  # type: ignore[arg-type]
+        monkeypatch.setattr("kiro_crew.dashboard.chat_utils.effective_session_key", lambda s: s.key)
+        state.subagents = _Subs(running={"chat-a"}, queued={"chat-a": 2})  # type: ignore[attr-defined]
+
+        state.push_subagent_patch()
+        first = len(capable.send_str.call_args_list)
+        state.push_subagent_patch()  # nothing changed
+
+        assert len(capable.send_str.call_args_list) == first
+
+    def test_a_moved_count_sends_a_second_frame(self, state: DashboardState, monkeypatch) -> None:
+        _slot(state, "chat-a")
+        capable = _WS(patch_capable=True)
+        state.register_ws(capable)  # type: ignore[arg-type]
+        monkeypatch.setattr("kiro_crew.dashboard.chat_utils.effective_session_key", lambda s: s.key)
+        subs = _Subs(running={"chat-a"}, queued={"chat-a": 1})
+        state.subagents = subs  # type: ignore[attr-defined]
+
+        state.push_subagent_patch()
+        subs._queued = {"chat-a": 3}  # a tick moved the queued depth
+        state.push_subagent_patch()
+
+        patches = [f for f in capable.frames() if f["type"] == "slot_patch"]
+        assert patches[-1]["data"]["slots"] == [
+            {"key": "chat-a", "subagents_running": True, "subagents_queued": 3}
+        ]
+
+    def test_legacy_consumer_gets_the_full_list(self, state: DashboardState, monkeypatch) -> None:
+        _slot(state, "chat-a")
+        legacy = _WS(patch_capable=False)
+        state.register_ws(legacy)  # type: ignore[arg-type]
+        monkeypatch.setattr("kiro_crew.dashboard.chat_utils.effective_session_key", lambda s: s.key)
+        state.subagents = _Subs(running={"chat-a"}, queued={})  # type: ignore[attr-defined]
+
+        state.push_subagent_patch()
+
+        assert legacy.types() == ["slots"]
+
+
 # ── End to end through /api/ws and the real handlers ──
 
 

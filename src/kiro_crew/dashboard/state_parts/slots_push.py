@@ -37,6 +37,7 @@ from kiro_crew.dashboard.state_parts.sidebar_stores import _safe_folder_tree
 from kiro_crew.dashboard.state_parts.slots_frame import (
     _SLOTS_BROADCAST_INTERVAL_S,
     _attach_slot_parents,
+    _published_queued_by_slot,
     _slots_broadcast_interval_for,
     _slots_serialization_note,
     _slots_ws_frame,
@@ -51,8 +52,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger("kiro_crew.dashboard.state")
 
 
-#: Fields whose dashboard-user projection is identical for every slot-patch
-#: audience. Per-audience fields such as ``source_links`` require a full frame.
+#: Fields a ``push_slot_patch`` row may carry. Each reads the same in a one-row
+#: patch as in the full frame because its dashboard-user projection is identical
+#: for every audience; per-audience fields such as ``source_links`` require a
+#: full frame. The sub-agent counts (``subagents_running`` / ``subagents_queued``)
+#: are deliberately NOT here: they are derived from the sub-agent manager rather
+#: than the slot row, so ``push_subagent_patch`` owns them with its own diff cache.
 _SLOT_PATCH_FIELDS = frozenset({"pinned", "mutes_opened", "muted", "title", "folder_id"})
 
 
@@ -566,9 +571,10 @@ def push_slot_patch(self: DashboardState, key: str, fields: Iterable[str]) -> No
     The values come from the dashboard-user projection of the slot, so a
     patched field reads exactly as it would in the full frame (the title is
     redacted the same way). Only fields in :data:`_SLOT_PATCH_FIELDS` are
-    accepted because ``source_links`` and other per-audience fields require
-    a full frame. A slot that is gone or still under construction falls back
-    to an ordinary full push.
+    accepted because ``source_links`` and other per-audience fields require a
+    full frame, and the sub-agent counts are derived off the slot row
+    (``push_subagent_patch`` owns those). A slot that is gone or still under
+    construction falls back to an ordinary full push.
     """
     field_names = tuple(fields)
     unsupported = sorted(set(field_names) - _SLOT_PATCH_FIELDS)
@@ -623,6 +629,55 @@ def push_lineage_patch(self: DashboardState) -> None:
             continue
         sent[row["key"]] = value
         changed.append({"key": row["key"], "parent": value[0], "lineage_pending": value[1]})
+    if not changed:
+        return
+    if self._has_legacy_slots_audience():
+        self.push_slots_update(legacy_only=True)
+    if self._has_slot_patch_clients():
+        self._send_slot_patch({"slots": changed})
+
+
+def push_subagent_patch(self: DashboardState) -> None:
+    """Push every live slot whose sub-agent counts moved, as one ``slot_patch`` frame.
+
+    ``subagents_running`` and ``subagents_queued`` change on nearly every
+    sub-agent tick of a conductor fleet. Unlike the fields ``push_slot_patch``
+    serves, these two are NOT on the slot row: ``serialize_slots`` derives them
+    from the sub-agent manager (``running_agents_for`` keyed by the slot's
+    effective session, and the manager's published queued depths by slot). This
+    method recomputes them the SAME way, so a patch never disagrees with the
+    full frame a later ``push_slots_update`` ships.
+
+    Rows whose two counts match what this method last sent are left out, so an
+    idle fleet -- or a tick that moved nothing visible -- costs no frame
+    (mirrors :meth:`push_lineage_patch`). The ``_subagents_sent`` memory is
+    pruned to the live keys on each pass.
+    """
+    # circular import: chat_utils imports this module at load time.
+    from kiro_crew.dashboard.chat_utils import effective_session_key
+
+    subs = getattr(self, "subagents", None)
+    under_construction = getattr(self, "_slots_under_construction", None) or ()
+    queued_by_slot = _published_queued_by_slot(subs)
+    sent = getattr(self, "_subagents_sent", None)
+    if sent is None:
+        sent = {}
+        self._subagents_sent = sent
+    live_keys: set[str] = set()
+    changed: list[dict[str, Any]] = []
+    for s in self._slots.values():
+        if s.key in under_construction:
+            continue
+        live_keys.add(s.key)
+        running = bool(subs and subs.running_agents_for(effective_session_key(s)))
+        queued = queued_by_slot.get(s.key, 0)
+        value = (running, queued)
+        if sent.get(s.key) == value:
+            continue
+        sent[s.key] = value
+        changed.append({"key": s.key, "subagents_running": running, "subagents_queued": queued})
+    for key in [k for k in sent if k not in live_keys]:
+        del sent[key]
     if not changed:
         return
     if self._has_legacy_slots_audience():
